@@ -43,14 +43,19 @@ Exit code `0`.
 ## 3. Change one component
 
 Round `Button`'s corner — `borderRadius: 6` to `14` in
-[src/Button.jsx](src/Button.jsx) — then rebuild and run:
+[src/Button.jsx](src/Button.jsx), then rebuild and run:
+
+```bash
+npm run build-storybook
+npx variance run
+```
 
 ```
 3 changed
 
-[changed] story:button--neutral — V: 93 pixel(s) differ across 3 region(s) in V
-[changed] story:button--primary — V: 82 pixel(s) differ across 4 region(s) in V
-[changed] story:panel--settings — V: 43 pixel(s) differ across 4 region(s) in V
+[changed] story:button--neutral — V: 93 pixels differ across 3 regions in V
+[changed] story:button--primary — V: 82 pixels differ across 4 regions in V
+[changed] story:panel--settings — V: 43 pixels differ across 4 regions in V
 ```
 
 Three stories moved. Only one of them is a `Button` story — `Panel` renders a

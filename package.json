@@ -10,9 +10,9 @@
   },
   "devDependencies": {
     "@storybook/react-vite": "^9.1.13",
-    "@variance-authority/cli": "^0.1.0",
-    "@variance-authority/jsx-source": "^0.1.0",
-    "@variance-authority/storybook-collector": "^0.1.0",
+    "@variance-authority/cli": "^0.1.1",
+    "@variance-authority/jsx-source": "^0.1.1",
+    "@variance-authority/storybook-collector": "^0.1.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "storybook": "^9.1.13",
