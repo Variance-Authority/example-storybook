@@ -37,7 +37,8 @@ env:
 
 jobs:
   variance:
-    if: github.event.action != 'labeled' || github.event.label.name == 'variance: accept'
+    if: >-
+      github.event.action != 'labeled' || github.event.label.name == 'variance: accept'
     concurrency:
       group: variance-${{ github.ref }}
       cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -74,7 +75,7 @@ jobs:
           intent: ${{ steps.accept.outputs.intent }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           accept: ${{ steps.accept.outputs.promote }}
-          to-accept: check the report, then add the **variance: accept** label to this pull request.
+          to-accept: 'check the report, then add the **variance: accept** label to this pull request.'
 
   tests:
     if: github.event.action != 'labeled' && github.event_name != 'workflow_dispatch'
