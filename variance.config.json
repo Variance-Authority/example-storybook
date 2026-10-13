@@ -8,7 +8,8 @@
     "index": "storybook-static/index.json",
     "collector": "variance/storybook.mjs"
   },
-  "baselines": { "kind": "directory", "root": ".variance/baselines" },
+  "baselines": { "kind": "directory", "root": ".variance/baselines", "carry": "actions-cache" },
+  "suites": { "unit": { "kind": "unit", "carry": "actions-cache" } },
   "fonts": [],
   "report": "out/report.json"
 }

@@ -1,0 +1,170 @@
+name: variance
+
+# Two checks on every pull request:
+#
+# - `variance` renders the Storybook and compares each story against the
+#   baselines this repository accepted. The baselines live in the Actions cache,
+#   not in git, so a reviewer accepts a change with the `variance: accept`
+#   label, and every push to `main` accepts what `main` renders.
+# - `tests` runs the unit tests that stand on the change, and comments twice:
+#   which tests a change reaches before they run, and which changed lines they
+#   ran after.
+#
+# The variance-authority repository opens a pull request here every week that
+# changes `Panel`'s padding, watches both checks react, accepts, and closes it.
+# That is its end-to-end test of the cache review flow, and the reason nothing
+# below is tuned for this example alone.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # `labeled` is how a reviewer accepts; any other label skips the job.
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      accept:
+        description: Promote what this run renders to the baselines.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  VARIANCE_REVIEW: cache
+
+jobs:
+  variance:
+    if: github.event.action != 'labeled' || github.event.label.name == 'variance: accept'
+    concurrency:
+      group: variance-${{ github.ref }}
+      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    # The image's Chromium is the one the baselines were painted in. It matches
+    # the `playwright` pinned in package.json, so the browser the CLI launches is
+    # the one in the image.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@v4
+
+      # Your copy of the variance-authority repository's script: the label on a
+      # pull request, a push to `main`, or a dispatch with `accept` ticked.
+      - name: decide whether this run accepts
+        id: accept
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VARIANCE_ACCEPT_LABEL: 'variance: accept'
+          VARIANCE_DISPATCH_ACCEPT: ${{ inputs.accept }}
+        run: node .github/scripts/variance-accept.mjs
+
+      - run: npm ci
+      - run: npm run build-storybook
+
+      # Pinned to the commit tagged `@variance-authority/cli@0.15.0`, the CLI
+      # version package.json installs: the action calls the CLI, and the two
+      # are released together.
+      - id: variance
+        uses: Variance-Authority/variance-authority/.github/actions/variance@6f680bb9196af71967574c89c23ad9e48348ee7e
+        with:
+          comment: ${{ github.event_name == 'pull_request' }}
+          intent: ${{ steps.accept.outputs.intent }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          accept: ${{ steps.accept.outputs.promote }}
+          to-accept: check the report, then add the **variance: accept** label to this pull request.
+
+  tests:
+    if: github.event.action != 'labeled' && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      # The whole history, because a review compares the change with the
+      # commit the base branch recorded.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The recording of which test ran which line lives under node_modules,
+      # so it is restored after the install. A pull request restores the one
+      # its base branch saved; a push to `main` saves the one it makes.
+      - id: carry
+        run: npx --no-install variance carry restore --format github >> "$GITHUB_OUTPUT"
+      - if: steps.carry.outputs.suite-unit-key != ''
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.carry.outputs.suite-unit-path }}
+          key: ${{ steps.carry.outputs.suite-unit-key }}
+          restore-keys: ${{ steps.carry.outputs.suite-unit-restore-keys }}
+
+      # Before the tests run, from the base's recording: which tests stand on
+      # the lines this change touched.
+      - name: what this change might do
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ steps.carry.outputs.base }}
+          OUT: ${{ runner.temp }}/might
+        run: |
+          set -euo pipefail
+          npx --no-install variance review --since "$BASE" --suite unit --format markdown --out "$OUT"
+          record=$(node -e "import('@variance-authority/sense/test-selection').then((m) => console.log(m.testCoverageFile(process.cwd(), { suite: 'unit' })))")
+          if [ -f "$record" ]; then cp "$record" "$RUNNER_TEMP/base-coverage.bin"; fi
+
+      # On a pull request, only the tests the change reaches run, and the run
+      # prints how many of the suite that was.
+      - name: unit tests
+        env:
+          VARIANCE_AUTHORITY_SINCE: ${{ github.event_name == 'pull_request' && steps.carry.outputs.base || '' }}
+        run: npm test
+
+      - name: what the tests ran
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ steps.carry.outputs.base }}
+          OUT: ${{ runner.temp }}/evidence
+        run: |
+          set -euo pipefail
+          against=()
+          if [ -f "$RUNNER_TEMP/base-coverage.bin" ]; then against=(--against "$RUNNER_TEMP/base-coverage.bin"); fi
+          npx --no-install variance review --since "$BASE" --suite unit --coverage "${against[@]}" --format markdown --out "$OUT"
+
+      # The comment poster the action uses, at the same commit. Checked out
+      # last, so the tests and the reviews above never see it as a change.
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          repository: Variance-Authority/variance-authority
+          ref: 6f680bb9196af71967574c89c23ad9e48348ee7e
+          path: .variance-action
+          sparse-checkout: .github/actions/variance
+          persist-credentials: false
+
+      # Two comments, each updated in place. Both bodies open with the same
+      # review marker, so each is posted under a marker of its own.
+      - name: post the reviews
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          post() {
+            { printf '%s\n' "$1"; cat "$2"; } > "$RUNNER_TEMP/body.md"
+            node .variance-action/.github/actions/variance/post-comment.mjs --body-file "$RUNNER_TEMP/body.md" --marker "$1"
+          }
+          post '<!-- example-storybook: unit might -->' "$RUNNER_TEMP/might/review.md"
+          post '<!-- example-storybook: unit evidence -->' "$RUNNER_TEMP/evidence/review.md"
+
+      - id: keep
+        if: github.event_name == 'push'
+        run: npx --no-install variance carry save --format github >> "$GITHUB_OUTPUT"
+      - if: steps.keep.outputs.suite-unit-key != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.keep.outputs.suite-unit-path }}
+          key: ${{ steps.keep.outputs.suite-unit-key }}

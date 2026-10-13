@@ -110,4 +110,24 @@ three stories changed; it cannot tell you they changed for one reason.
 | [.storybook/main.js](.storybook/main.js) | ordinary Storybook config, plus the plugin that preserves file and line |
 | [variance.config.json](variance.config.json) | reads `storybook-static/index.json` for the story list |
 | [variance/storybook.mjs](variance/storybook.mjs) | tells the run which folders hold your components |
-| [src/](src) | two components, three stories |
+| [src/](src) | two components, three stories, and a unit test for each |
+| [vitest.config.js](vitest.config.js) | records which test ran which line |
+| [.github/workflows/variance.yml](.github/workflows/variance.yml) | the two checks below |
+
+## On a pull request
+
+Two checks run on every pull request.
+
+`variance` renders the Storybook in a pinned Playwright image and posts the
+docket above as a comment. The baselines live in the Actions cache, not in git.
+You accept a change by adding the `variance: accept` label, and every push to
+`main` accepts what `main` renders.
+
+`tests` runs the unit tests and comments twice. Before the tests run, it says
+which tests stand on the lines you changed. After, it says which changed lines
+they ran. Only the tests your change reaches run, so a change to `Panel` runs
+`Panel.test.jsx` and skips `Button.test.jsx`.
+
+Every week the variance-authority repository opens a pull request here that
+changes `Panel`'s padding. It checks that both checks react and the comments
+arrive, accepts the change, and closes the pull request without merging.
