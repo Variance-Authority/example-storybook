@@ -4,27 +4,27 @@ name: variance
 #
 # - `variance` renders the Storybook and compares each story against the
 #   baselines this repository accepted. The baselines live in the Actions cache,
-#   not in git, so a reviewer accepts a change with the `variance: accept`
-#   label, and every push to `main` accepts what `main` renders.
+#   not in git. A reviewer accepts a change by ticking the box in the pull
+#   request's comment, which `variance-tick.yml` answers; a dispatch with
+#   `accept` ticked accepts what its branch renders; and every push to `main`
+#   accepts what `main` renders.
 # - `tests` runs the unit tests that stand on the change, and comments twice:
 #   which tests a change reaches before they run, and which changed lines they
 #   ran after.
 #
 # The variance-authority repository opens a pull request here every week that
-# changes `Panel`'s padding, watches both checks react, accepts, and closes it.
-# That is its end-to-end test of the cache review flow, and the reason nothing
-# below is tuned for this example alone.
+# changes `Panel`'s padding, watches both checks react, ticks the box, and
+# closes it. That is its end-to-end test of the cache review flow, and the
+# reason nothing below is tuned for this example alone.
 
 on:
   push:
     branches: [main]
   pull_request:
-    # `labeled` is how a reviewer accepts; any other label skips the job.
-    types: [opened, synchronize, reopened, labeled]
-  workflow_dispatch:
+  workflow_dispatch: # Run workflow, in the Actions tab
     inputs:
       accept:
-        description: Promote what this run renders to the baselines.
+        description: Accept what this branch renders
         type: boolean
         default: false
 
@@ -32,16 +32,11 @@ permissions:
   contents: read
   pull-requests: write
 
-env:
-  VARIANCE_REVIEW: cache
-
 jobs:
   variance:
-    if: >-
-      github.event.action != 'labeled' || github.event.label.name == 'variance: accept'
     concurrency:
       group: variance-${{ github.ref }}
-      cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+      cancel-in-progress: "${{ github.event_name == 'pull_request' }}"
     runs-on: ubuntu-24.04
     # The image's Chromium is the one the baselines were painted in. It matches
     # the `playwright` pinned in package.json, so the browser the CLI launches is
@@ -51,34 +46,18 @@ jobs:
       options: --ipc=host
     steps:
       - uses: actions/checkout@v4
-
-      # Your copy of the variance-authority repository's script: the label on a
-      # pull request, a push to `main`, or a dispatch with `accept` ticked.
-      - name: decide whether this run accepts
-        id: accept
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VARIANCE_ACCEPT_LABEL: 'variance: accept'
-          VARIANCE_DISPATCH_ACCEPT: ${{ inputs.accept }}
-        run: node .github/scripts/variance-accept.mjs
-
       - run: npm ci
       - run: npm run build-storybook
 
-      # Pinned to the commit tagged `@variance-authority/cli@0.15.0`, the CLI
-      # version package.json installs: the action calls the CLI, and the two
-      # are released together.
-      - id: variance
-        uses: Variance-Authority/variance-authority/.github/actions/variance@6f680bb9196af71967574c89c23ad9e48348ee7e
+      - uses: Variance-Authority/action@v1
         with:
-          comment: ${{ github.event_name == 'pull_request' }}
-          intent: ${{ steps.accept.outputs.intent }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          accept: ${{ steps.accept.outputs.promote }}
-          to-accept: 'check the report, then add the **variance: accept** label to this pull request.'
+          accept: "${{ github.event_name == 'push' || inputs.accept }}"
+          tick-to-accept: 'true'
+          to-accept: 'check the report, then tick the box below'
 
   tests:
-    if: github.event.action != 'labeled' && github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       # The whole history, because a review compares the change with the
@@ -91,6 +70,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # The source index the selection and the reviews read. Under CI a reader
+      # refuses to build it on demand.
+      - run: npx --no-install variance index
 
       # The recording of which test ran which line lives under node_modules,
       # so it is restored after the install. A pull request restores the one

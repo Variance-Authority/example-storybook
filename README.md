@@ -113,6 +113,7 @@ three stories changed; it cannot tell you they changed for one reason.
 | [src/](src) | two components, three stories, and a unit test for each |
 | [vitest.config.js](vitest.config.js) | records which test ran which line |
 | [.github/workflows/variance.yml](.github/workflows/variance.yml) | the two checks below |
+| [.github/workflows/variance-tick.yml](.github/workflows/variance-tick.yml) | answers a tick in the comment by running `variance` again, which accepts |
 
 ## On a pull request
 
@@ -120,8 +121,10 @@ Two checks run on every pull request.
 
 `variance` renders the Storybook in a pinned Playwright image and posts the
 docket above as a comment. The baselines live in the Actions cache, not in git.
-You accept a change by adding the `variance: accept` label, and every push to
-`main` accepts what `main` renders.
+You accept a change by ticking the box at the foot of that comment, which runs
+the check again and accepts what it renders. Running the workflow from the
+Actions tab with **accept** ticked accepts what that branch renders, and every
+push to `main` accepts what `main` renders.
 
 `tests` runs the unit tests and comments twice. Before the tests run, it says
 which tests stand on the lines you changed. After, it says which changed lines
@@ -130,4 +133,4 @@ they ran. Only the tests your change reaches run, so a change to `Panel` runs
 
 Every week the variance-authority repository opens a pull request here that
 changes `Panel`'s padding. It checks that both checks react and the comments
-arrive, accepts the change, and closes the pull request without merging.
+arrive, ticks the box, and closes the pull request without merging.
